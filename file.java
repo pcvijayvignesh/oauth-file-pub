@@ -4,9 +4,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -60,31 +58,16 @@ public class OAuthSecurityConfig {
 
     @Bean
     public JwtDecoder jwtDecoder() {
-        return NimbusJwtDecoder.withJwkSetUri(jwksUrl)
-            .build()
-            .andThen(jwt -> validateJwt(jwt, resourceId, validClientId));
-    }
+        NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withJwkSetUri(jwksUrl).build();
 
-    private Jwt validateJwt(Jwt jwt, String audience, String clientId) {
-        validateAudience(jwt, audience);
-        validateClientId(jwt, clientId);
-        return jwt;
-    }
+        // Adding custom validators for audience and client ID
+        OAuth2TokenValidator<Jwt> withAudience = new JwtClaimValidator<List<String>>(JwtClaimNames.AUD, aud -> aud.contains(resourceId));
+        OAuth2TokenValidator<Jwt> withClientId = new JwtClaimValidator<String>("azp", clientId -> validClientId.equals(clientId));
 
-    private void validateAudience(Jwt jwt, String audience) {
-        if (!jwt.getAudience().contains(audience)) {
-            throw new IllegalArgumentException("Invalid audience");
-        }
-    }
+        OAuth2TokenValidator<Jwt> withBothValidators = new DelegatingOAuth2TokenValidator<>(withAudience, withClientId);
+        jwtDecoder.setJwtValidator(withBothValidators);
 
-    private void validateClientId(Jwt jwt, String clientId) {
-        String tokenClientId = jwt.getClaim("azp");
-        if (tokenClientId == null) {
-            tokenClientId = jwt.getClaim("client_id");
-        }
-        if (!clientId.equals(tokenClientId)) {
-            throw new IllegalArgumentException("Invalid client ID");
-        }
+        return jwtDecoder;
     }
 
     @Bean
