@@ -4,6 +4,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -31,6 +34,9 @@ public class OAuthSecurityConfig {
     @Value("${okta.oauth2.issuer}/v1/keys")
     private final String jwksUrl;
 
+    @Value("${okta.oauth2.client-id}")
+    private final String validClientId;
+
     @Value("${cors.allowed.origin}")
     private final String[] corsAllowedOrigins;
 
@@ -40,18 +46,45 @@ public class OAuthSecurityConfig {
             .authorizeHttpRequests(authorize -> 
                 authorize
                     .requestMatchers(getBypassSecurityUris(contextPath).toArray(new String[0])).permitAll()
-                    .requestMatchers("/actuator/**").permitAll() // Example for allowing actuator endpoints
+                    .requestMatchers("/actuator/**").permitAll()
                     .anyRequest().authenticated()
             )
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .oauth2ResourceServer(oauth2ResourceServer ->
                 oauth2ResourceServer
-                    .jwt(jwt ->
-                        jwt.jwkSetUri(jwksUrl)
-                    )
+                    .jwt(jwt -> jwt.decoder(jwtDecoder()))
             );
 
         return http.build();
+    }
+
+    @Bean
+    public JwtDecoder jwtDecoder() {
+        return NimbusJwtDecoder.withJwkSetUri(jwksUrl)
+            .build()
+            .andThen(jwt -> validateJwt(jwt, resourceId, validClientId));
+    }
+
+    private Jwt validateJwt(Jwt jwt, String audience, String clientId) {
+        validateAudience(jwt, audience);
+        validateClientId(jwt, clientId);
+        return jwt;
+    }
+
+    private void validateAudience(Jwt jwt, String audience) {
+        if (!jwt.getAudience().contains(audience)) {
+            throw new IllegalArgumentException("Invalid audience");
+        }
+    }
+
+    private void validateClientId(Jwt jwt, String clientId) {
+        String tokenClientId = jwt.getClaim("azp");
+        if (tokenClientId == null) {
+            tokenClientId = jwt.getClaim("client_id");
+        }
+        if (!clientId.equals(tokenClientId)) {
+            throw new IllegalArgumentException("Invalid client ID");
+        }
     }
 
     @Bean
@@ -70,4 +103,3 @@ public class OAuthSecurityConfig {
         return List.of();
     }
 }
-
