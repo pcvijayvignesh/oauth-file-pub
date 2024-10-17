@@ -1,88 +1,37 @@
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
-import org.springframework.security.oauth2.jwt.*;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.core.io.FileSystemResource;
 
-import lombok.RequiredArgsConstructor;
+import java.io.File;
 
-import java.util.Arrays;
-import java.util.List;
+public class RestTemplateExample {
+    public static void main(String[] args) {
+        RestTemplate restTemplate = new RestTemplate();
 
-@Configuration
-@EnableWebSecurity
-@EnableGlobalMethodSecurity(prePostEnabled = true)
-@RequiredArgsConstructor
-public class OAuthSecurityConfig {
+        // Set the headers
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+        headers.set("Authorization", "token");
 
-    private final ApprovalFeatureToggleConfig approvalsFeatureToggleConfig;
+        // Create the body
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", new FileSystemResource(new File("********.pdf")));
+        body.add("documentName", "test");
 
-    @Value("${server.servlet.context-path:/}")
-    private final String contextPath;
+        // Combine headers and body into a request entity
+        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
-    @Value("${okta.oauth2.audience}")
-    private final String resourceId;
+        // Send the request
+        String url = "url";
+        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, requestEntity, String.class);
 
-    @Value("${okta.oauth2.issuer}/v1/keys")
-    private final String jwksUrl;
-
-    @Value("${okta.oauth2.client-id}")
-    private final String validClientId;
-
-    @Value("${cors.allowed.origin}")
-    private final String[] corsAllowedOrigins;
-
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-            .authorizeHttpRequests(authorize -> 
-                authorize
-                    .requestMatchers(getBypassSecurityUris(contextPath).toArray(new String[0])).permitAll()
-                    .requestMatchers("/actuator/**").permitAll()
-                    .anyRequest().authenticated()
-            )
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .oauth2ResourceServer(oauth2ResourceServer ->
-                oauth2ResourceServer
-                    .jwt(jwt -> jwt.decoder(jwtDecoder()))
-            );
-
-        return http.build();
-    }
-
-    @Bean
-    public JwtDecoder jwtDecoder() {
-        NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withJwkSetUri(jwksUrl).build();
-
-        // Adding custom validators for audience and client ID
-        OAuth2TokenValidator<Jwt> withAudience = new JwtClaimValidator<List<String>>(JwtClaimNames.AUD, aud -> aud.contains(resourceId));
-        OAuth2TokenValidator<Jwt> withClientId = new JwtClaimValidator<String>("azp", clientId -> validClientId.equals(clientId));
-
-        OAuth2TokenValidator<Jwt> withBothValidators = new DelegatingOAuth2TokenValidator<>(withAudience, withClientId);
-        jwtDecoder.setJwtValidator(withBothValidators);
-
-        return jwtDecoder;
-    }
-
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList(corsAllowedOrigins));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
-    }
-
-    private List<String> getBypassSecurityUris(String contextPath) {
-        // Implement this method as per your requirements
-        return List.of();
+        // Print the response
+        System.out.println(response.getBody());
     }
 }
