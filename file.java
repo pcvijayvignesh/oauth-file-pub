@@ -1,108 +1,123 @@
-To cover the MessagePostProcessor line that sets a custom header, you can create a custom matcher or use an ArgumentCaptor to capture and verify the MessagePostProcessor argument when it’s used in the convertAndSend method. Here’s an updated version of the test case that includes verification for the MessagePostProcessor.
+To write a test case for this exportESData method in SearchControllerTest.java, you would generally mock the dependencies and verify the interactions and output. Below is a basic example in JUnit, using Mockito to mock dependencies and verify behavior.
 
-Updated Test Case
+Here’s a sample test case:
 
-import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.slf4j.Logger;
-import org.springframework.amqp.core.Message;
-import org.springframework.amqp.core.MessageProperties;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.http.ResponseEntity;
 
-class NotificationPublisherTest {
-
-    @Mock
-    private RabbitTemplate writeRabbitTemplateForScupMQ;
-
-    @Mock
-    private Logger logger;
+class SearchControllerTest {
 
     @InjectMocks
-    private NotificationPublisher notificationPublisher;
+    private SearchController searchController;
+
+    @Mock
+    private SearchService searchService;
+
+    @Mock
+    private ExcelExportService excelExportService;
+
+    @Mock
+    private HttpServletResponse httpServletResponse;
+
+    @Mock
+    private SearchRequestBody searchRequestBody;
+
+    @Mock
+    private SearchAigResponse searchAigResponse;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        notificationPublisher.exchange = "test.exchange";
-        notificationPublisher.routingKey = "test.routingKey";
     }
 
     @Test
-    void testPublishEmail() {
-        // Arrange
-        EmailNotificationEvent event = new EmailNotificationEvent();
-        Message<?> expectedMessage = MessageBuilder.withPayload(event)
-            .setHeader(NotificationPublisher.HEADER_AIG_SOURCE_GEAR_ID, "catalog-6429")
-            .build();
+    void testExportESData_WithSubTerritoryLevel() throws Exception {
+        // Set up test data and mocks
+        when(searchRequestBody.getQuery()).thenReturn("testQuery");
+        when(searchRequestBody.getExportType()).thenReturn("ISSUING_SUB_TERRITORY_LEVEL");
+        when(searchRequestBody.getSort()).thenReturn("sortField");
+        when(searchAigResponse.getMetadata().getPage().getTotalResults()).thenReturn(Constants.ROW_LIMIT - 1);
+        when(searchService.search(any())).thenReturn(searchAigResponse);
 
-        // Mock the logger to verify debug message
-        doNothing().when(logger).debug(anyString(), any());
+        // Invoke the method under test
+        ResponseEntity<SearchAigResponse> response = searchController.exportESData(searchRequestBody);
 
-        // Capture the MessagePostProcessor argument
-        ArgumentCaptor<MessagePostProcessor> processorCaptor = ArgumentCaptor.forClass(MessagePostProcessor.class);
+        // Verify the correct method was called
+        verify(excelExportService).issuingSubTerritoryLevelReport(eq(searchAigResponse), eq(httpServletResponse));
+        assertNotNull(response);
+        assertEquals(searchAigResponse, response.getBody());
+    }
 
-        // Act
-        boolean result = notificationPublisher.publishEmail(event);
+    @Test
+    void testExportESData_WithFormLevel() throws Exception {
+        // Set up test data and mocks
+        when(searchRequestBody.getQuery()).thenReturn("testQuery");
+        when(searchRequestBody.getExportType()).thenReturn("FORM_LEVEL");
+        when(searchRequestBody.getSort()).thenReturn("sortField");
+        when(searchAigResponse.getMetadata().getPage().getTotalResults()).thenReturn(Constants.ROW_LIMIT - 1);
+        when(searchService.search(any())).thenReturn(searchAigResponse);
 
-        // Assert
-        assertTrue(result, "publishEmail should return true");
+        // Invoke the method under test
+        ResponseEntity<SearchAigResponse> response = searchController.exportESData(searchRequestBody);
 
-        // Verify that convertAndSend was called with correct arguments
-        verify(writeRabbitTemplateForScupMQ, times(1)).convertAndSend(
-            eq("test.exchange"),
-            eq("test.routingKey"),
-            eq(expectedMessage),
-            processorCaptor.capture()
-        );
+        // Verify the correct method was called
+        verify(excelExportService).formLevelReport(eq(searchAigResponse), eq(httpServletResponse));
+        assertNotNull(response);
+        assertEquals(searchAigResponse, response.getBody());
+    }
 
-        // Capture the MessagePostProcessor and apply it to a mock message to check the header
-        Message mockMessage = mock(Message.class);
-        MessageProperties mockMessageProperties = new MessageProperties();
-        when(mockMessage.getMessageProperties()).thenReturn(mockMessageProperties);
+    @Test
+    void testExportESData_TooManyRecords() {
+        // Set up test data and mocks
+        when(searchRequestBody.getQuery()).thenReturn("testQuery");
+        when(searchAigResponse.getMetadata().getPage().getTotalResults()).thenReturn(Constants.ROW_LIMIT + 1);
+        when(searchService.search(any())).thenReturn(searchAigResponse);
 
-        // Apply the captured MessagePostProcessor to the mock message
-        processorCaptor.getValue().postProcessMessage(mockMessage);
+        // Verify the exception is thrown
+        FormSearchFiltersExitsCountException thrown = assertThrows(FormSearchFiltersExitsCountException.class, () -> {
+            searchController.exportESData(searchRequestBody);
+        });
 
-        // Verify that the header is set correctly
-        assertEquals("catalog-6429", mockMessageProperties.getHeaders().get(NotificationPublisher.HEADER_AIG_SOURCE_GEAR_ID));
-
-        // Verify that the logger.debug was called
-        verify(logger, times(1)).debug(contains("Email Notification to be sent"), eq(expectedMessage));
+        assertEquals(Constants.TOO_MUCH_RECORDS_ERR_MSG, thrown.getMessage());
     }
 }
 
-Explanation
+Explanation:
 
-1. ArgumentCaptor: Captures the MessagePostProcessor used in convertAndSend.
+1. Test Initialization:
 
-
-2. Mock Message and Properties: Sets up a mock Message with MessageProperties so we can check if the header is set as expected.
-
-
-3. Apply Captured MessagePostProcessor: Calls postProcessMessage on the mock message and verifies that the header HEADER_AIG_SOURCE_GEAR_ID is set to "catalog-6429".
-
-
-4. Assertions: Checks that:
-
-publishEmail returns true.
-
-The convertAndSend method is called with the correct parameters.
-
-The custom header is correctly set in the MessagePostProcessor.
-
-The logger debug message is triggered.
+We initialize the mocks and inject them into SearchController.
 
 
 
+2. testExportESData_WithSubTerritoryLevel:
 
-This should provide full coverage for the MessagePostProcessor line in your code.
+Sets up searchRequestBody to return "ISSUING_SUB_TERRITORY_LEVEL" for getExportType.
+
+Mocks searchService.search to return a mocked searchAigResponse.
+
+Calls exportESData and verifies if issuingSubTerritoryLevelReport in excelExportService was called.
+
+
+
+3. testExportESData_WithFormLevel:
+
+Similar to the above but sets getExportType to a different value ("FORM_LEVEL") and verifies if formLevelReport was called.
+
+
+
+4. testExportESData_TooManyRecords:
+
+Sets up a response where the result count exceeds ROW_LIMIT, expecting FormSearchFiltersExitsCountException.
+
+
+
+
+This structure covers typical scenarios: different export types and an exception case for too many records. Adjust the details to fit your actual classes and constants.
 
