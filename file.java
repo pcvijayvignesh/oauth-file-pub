@@ -1,6 +1,6 @@
-To write a test case for this exportESData method in SearchControllerTest.java, you would generally mock the dependencies and verify the interactions and output. Below is a basic example in JUnit, using Mockito to mock dependencies and verify behavior.
+The NullPointerException in your tests is occurring because getPage() is being called on a null object in the searchAigResponse. This usually means that the mock objects are not fully set up, and some parts of the searchAigResponse hierarchy (like Metadata and Page) are not being initialized.
 
-Here’s a sample test case:
+To fix this, you can further mock the nested objects in searchAigResponse. Here’s how you can set up these mocks:
 
 import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -31,9 +31,19 @@ class SearchControllerTest {
     @Mock
     private SearchAigResponse searchAigResponse;
 
+    @Mock
+    private Metadata metadata;
+
+    @Mock
+    private Page page;
+
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
+
+        // Setting up the nested mocks
+        when(searchAigResponse.getMetadata()).thenReturn(metadata);
+        when(metadata.getPage()).thenReturn(page);
     }
 
     @Test
@@ -42,7 +52,7 @@ class SearchControllerTest {
         when(searchRequestBody.getQuery()).thenReturn("testQuery");
         when(searchRequestBody.getExportType()).thenReturn("ISSUING_SUB_TERRITORY_LEVEL");
         when(searchRequestBody.getSort()).thenReturn("sortField");
-        when(searchAigResponse.getMetadata().getPage().getTotalResults()).thenReturn(Constants.ROW_LIMIT - 1);
+        when(page.getTotalResults()).thenReturn(Constants.ROW_LIMIT - 1);
         when(searchService.search(any())).thenReturn(searchAigResponse);
 
         // Invoke the method under test
@@ -60,7 +70,7 @@ class SearchControllerTest {
         when(searchRequestBody.getQuery()).thenReturn("testQuery");
         when(searchRequestBody.getExportType()).thenReturn("FORM_LEVEL");
         when(searchRequestBody.getSort()).thenReturn("sortField");
-        when(searchAigResponse.getMetadata().getPage().getTotalResults()).thenReturn(Constants.ROW_LIMIT - 1);
+        when(page.getTotalResults()).thenReturn(Constants.ROW_LIMIT - 1);
         when(searchService.search(any())).thenReturn(searchAigResponse);
 
         // Invoke the method under test
@@ -76,48 +86,10 @@ class SearchControllerTest {
     void testExportESData_TooManyRecords() {
         // Set up test data and mocks
         when(searchRequestBody.getQuery()).thenReturn("testQuery");
-        when(searchAigResponse.getMetadata().getPage().getTotalResults()).thenReturn(Constants.ROW_LIMIT + 1);
+        when(page.getTotalResults()).thenReturn(Constants.ROW_LIMIT + 1);
         when(searchService.search(any())).thenReturn(searchAigResponse);
 
         // Verify the exception is thrown
         FormSearchFiltersExitsCountException thrown = assertThrows(FormSearchFiltersExitsCountException.class, () -> {
-            searchController.exportESData(searchRequestBody);
-        });
-
-        assertEquals(Constants.TOO_MUCH_RECORDS_ERR_MSG, thrown.getMessage());
-    }
-}
-
-Explanation:
-
-1. Test Initialization:
-
-We initialize the mocks and inject them into SearchController.
-
-
-
-2. testExportESData_WithSubTerritoryLevel:
-
-Sets up searchRequestBody to return "ISSUING_SUB_TERRITORY_LEVEL" for getExportType.
-
-Mocks searchService.search to return a mocked searchAigResponse.
-
-Calls exportESData and verifies if issuingSubTerritoryLevelReport in excelExportService was called.
-
-
-
-3. testExportESData_WithFormLevel:
-
-Similar to the above but sets getExportType to a different value ("FORM_LEVEL") and verifies if formLevelReport was called.
-
-
-
-4. testExportESData_TooManyRecords:
-
-Sets up a response where the result count exceeds ROW_LIMIT, expecting FormSearchFiltersExitsCountException.
-
-
-
-
-This structure covers typical scenarios: different export types and an exception case for too many records. Adjust the details to fit your actual classes and constants.
+            searchController.exportESData(searchRequest
 
